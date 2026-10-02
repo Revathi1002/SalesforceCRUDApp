@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import "./App.css";
 
-const API = "http://localhost:5000";
+const API = "https://salesforcecrudapp.onrender.com";
 
 const objects = [
     "Account",
@@ -113,8 +113,13 @@ function App() {
 
     const login = () => {
 
-        window.location.href =
-            `${API}/auth/login`;
+        <button onClick={() => {
+            window.location.href = `${API}/auth/login`;
+        }}>
+            Login with Salesforce
+        </button>
+
+
 
     };
 
