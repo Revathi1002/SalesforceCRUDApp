@@ -553,11 +553,10 @@ app.patch("/api/records/:object/:id", async (req, res) => {
 // ==========================================
 
 app.delete("/api/records/:object/:id", async (req, res) => {
-console.log("DELETE ROUTE HIT");
 
+    console.log("DELETE ROUTE HIT");
 
     if (!req.session.salesforce) {
-
         return res.status(401).json({
             message: "Not logged in to Salesforce"
         });
@@ -573,7 +572,6 @@ console.log("DELETE ROUTE HIT");
     console.log("Record ID:", id);
 
     if (!OBJECT_FIELDS[object]) {
-
         return res.status(400).json({
             message: "Invalid Salesforce object"
         });
@@ -592,9 +590,7 @@ console.log("DELETE ROUTE HIT");
         console.log("Delete URL:", deleteUrl);
 
         await axios.delete(
-
             deleteUrl,
-
             {
                 headers: {
                     Authorization:
@@ -606,33 +602,21 @@ console.log("DELETE ROUTE HIT");
         console.log("DELETE SUCCESS");
 
         res.json({
-
             success: true,
-
-            message:
-                "Record deleted successfully"
+            message: "Record deleted successfully"
         });
 
-   } catch (error) {
-       console.error("========== DELETE ERROR ==========");
-       console.error("Status:", error.response?.status);
-       console.error("Salesforce Error:", error.response?.data);
-       console.error("Message:", error.message);
-       console.error("=================================");
+    } catch (error) {
 
-       res.status(500).json({
-           message: "Failed to delete Salesforce record",
-           error: error.response?.data || error.message
-       });
-   }
+        console.error("========== DELETE ERROR ==========");
+        console.error("Status:", error.response?.status);
+        console.error("Salesforce Error:", error.response?.data);
+        console.error("Message:", error.message);
+        console.error("=================================");
 
         res.status(500).json({
-
-            message:
-                "Failed to delete Salesforce record",
-
-            error:
-                error.response?.data || error.message
+            message: "Failed to delete Salesforce record",
+            error: error.response?.data || error.message
         });
     }
 });
@@ -647,7 +631,7 @@ const PORT =
 
 console.log("Starting server...");
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
 
     console.log(
         `Server running at http://localhost:${PORT}`
