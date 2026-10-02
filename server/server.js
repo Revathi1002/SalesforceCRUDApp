@@ -10,6 +10,13 @@ const app = express();
 
 
 // ==========================================
+// RENDER PROXY
+// ==========================================
+
+app.set("trust proxy", 1);
+
+
+// ==========================================
 // MIDDLEWARE
 // ==========================================
 
@@ -17,7 +24,7 @@ app.use(express.json());
 
 app.use(
     cors({
-       origin: "https://salesforcecrud-frontend.onrender.com",
+        origin: "https://salesforcecrud-frontend.onrender.com",
         credentials: true
     })
 );
@@ -29,7 +36,8 @@ app.use(
         saveUninitialized: false,
         cookie: {
             httpOnly: true,
-            secure: false
+            secure: true,
+            sameSite: "none"
         }
     })
 );
@@ -102,30 +110,84 @@ const OBJECT_FIELDS = {
 
 app.get("/auth/login", (req, res) => {
 
+    console.log("=================================");
+    console.log("OAUTH LOGIN HIT");
+    console.log("Client ID exists:",
+        !!process.env.SALESFORCE_CLIENT_ID
+    );
+    console.log(
+        "Client ID length:",
+        process.env.SALESFORCE_CLIENT_ID?.length
+    );
+    console.log(
+        "Login URL:",
+        process.env.SALESFORCE_LOGIN_URL
+    );
+    console.log(
+        "Callback URL:",
+        process.env.SALESFORCE_CALLBACK_URL
+    );
+    console.log("=================================");
+
+
+    // Create PKCE code verifier
+
     const codeVerifier = crypto
         .randomBytes(32)
         .toString("base64url");
+
+
+    // Create PKCE code challenge
 
     const codeChallenge = crypto
         .createHash("sha256")
         .update(codeVerifier)
         .digest("base64url");
 
+
+    // Store verifier in session
+
     req.session.codeVerifier = codeVerifier;
 
+
+    // Salesforce OAuth parameters
+
     const params = new URLSearchParams({
+
         response_type: "code",
-        client_id: process.env.SALESFORCE_CLIENT_ID,
-        redirect_uri: process.env.SALESFORCE_CALLBACK_URL,
-        scope: "api refresh_token",
-        code_challenge: codeChallenge,
-        code_challenge_method: "S256"
+
+        client_id:
+            process.env.SALESFORCE_CLIENT_ID,
+
+        redirect_uri:
+            process.env.SALESFORCE_CALLBACK_URL,
+
+        scope:
+            "api refresh_token",
+
+        code_challenge:
+            codeChallenge,
+
+        code_challenge_method:
+            "S256"
     });
+
+
+    // Create Salesforce login URL
 
     const loginUrl =
         `${process.env.SALESFORCE_LOGIN_URL}/services/oauth2/authorize?${params.toString()}`;
 
-    res.redirect("https://salesforcecrud-frontend.onrender.com");
+
+    console.log(
+        "Redirecting to Salesforce OAuth"
+    );
+
+
+    // IMPORTANT:
+    // Redirect to Salesforce, NOT frontend
+
+    res.redirect(loginUrl);
 });
 
 
@@ -135,35 +197,65 @@ app.get("/auth/login", (req, res) => {
 
 app.get("/oauth/callback", async (req, res) => {
 
+    console.log("=================================");
+    console.log("OAUTH CALLBACK HIT");
+    console.log("=================================");
+
+
     const { code } = req.query;
 
+
     if (!code) {
+
         return res.status(400).send(
             "Authorization code not received."
         );
     }
 
-    const codeVerifier = req.session.codeVerifier;
+
+    const codeVerifier =
+        req.session.codeVerifier;
+
 
     if (!codeVerifier) {
+
         return res.status(400).send(
             "PKCE code verifier not found."
         );
     }
 
+
     try {
+
+        console.log(
+            "Exchanging authorization code for token..."
+        );
+
 
         const response = await axios.post(
 
             `${process.env.SALESFORCE_LOGIN_URL}/services/oauth2/token`,
 
             new URLSearchParams({
-                grant_type: "authorization_code",
-                code: code,
-                client_id: process.env.SALESFORCE_CLIENT_ID,
-                client_secret: process.env.SALESFORCE_CLIENT_SECRET,
-                redirect_uri: process.env.SALESFORCE_CALLBACK_URL,
-                code_verifier: codeVerifier
+
+                grant_type:
+                    "authorization_code",
+
+                code:
+                    code,
+
+                client_id:
+                    process.env.SALESFORCE_CLIENT_ID,
+
+                client_secret:
+                    process.env.SALESFORCE_CLIENT_SECRET,
+
+                redirect_uri:
+                    process.env.SALESFORCE_CALLBACK_URL,
+
+                code_verifier:
+                    codeVerifier
+
             }).toString(),
 
             {
@@ -173,6 +265,9 @@ app.get("/oauth/callback", async (req, res) => {
                 }
             }
         );
+
+
+        // Store Salesforce session
 
         req.session.salesforce = {
 
@@ -186,18 +281,49 @@ app.get("/oauth/callback", async (req, res) => {
                 response.data.instance_url
         };
 
+
+        // Remove PKCE verifier
+
         delete req.session.codeVerifier;
 
-        console.log("Salesforce login successful");
 
-        res.redirect("http://localhost:5173");
+        console.log(
+            "Salesforce login successful"
+        );
+
+
+        // IMPORTANT:
+        // Redirect to deployed React app
+
+        res.redirect(
+            "https://salesforcecrud-frontend.onrender.com"
+        );
 
     } catch (error) {
 
         console.error(
-            "OAuth Error:",
-            error.response?.data || error.message
+            "========== OAUTH ERROR =========="
         );
+
+        console.error(
+            "Status:",
+            error.response?.status
+        );
+
+        console.error(
+            "Salesforce Error:",
+            error.response?.data
+        );
+
+        console.error(
+            "Message:",
+            error.message
+        );
+
+        console.error(
+            "================================="
+        );
+
 
         res.status(500).json({
 
@@ -205,7 +331,8 @@ app.get("/oauth/callback", async (req, res) => {
                 "Salesforce authentication failed",
 
             error:
-                error.response?.data || error.message
+                error.response?.data ||
+                error.message
         });
     }
 });
@@ -224,6 +351,7 @@ app.get("/auth/status", (req, res) => {
         });
     }
 
+
     res.json({
         loggedIn: false
     });
@@ -236,10 +364,19 @@ app.get("/auth/status", (req, res) => {
 
 app.get("/auth/logout", (req, res) => {
 
-    req.session.destroy(() => {
+    req.session.destroy((error) => {
+
+        if (error) {
+
+            return res.status(500).json({
+                message: "Logout failed"
+            });
+        }
+
 
         res.json({
-            message: "Logged out successfully"
+            message:
+                "Logged out successfully"
         });
 
     });
@@ -255,18 +392,24 @@ app.get("/api/records", async (req, res) => {
     if (!req.session.salesforce) {
 
         return res.status(401).json({
-            message: "Not logged in to Salesforce"
+            message:
+                "Not logged in to Salesforce"
         });
     }
 
-    const objectName = req.query.object;
+
+    const objectName =
+        req.query.object;
+
 
     if (!OBJECT_FIELDS[objectName]) {
 
         return res.status(400).json({
-            message: "Invalid Salesforce object"
+            message:
+                "Invalid Salesforce object"
         });
     }
+
 
     try {
 
@@ -275,26 +418,37 @@ app.get("/api/records", async (req, res) => {
             instanceUrl
         } = req.session.salesforce;
 
+
         const fields =
             OBJECT_FIELDS[objectName].join(", ");
+
 
         const soql =
             `SELECT ${fields} FROM ${objectName} ORDER BY Id LIMIT 20`;
 
+
         const url =
             `${instanceUrl}/services/data/${API_VERSION}/query`;
 
-        const response = await axios.get(url, {
 
-            params: {
-                q: soql
-            },
+        const response =
+            await axios.get(
 
-            headers: {
-                Authorization:
-                    `Bearer ${accessToken}`
-            }
-        });
+                url,
+
+                {
+
+                    params: {
+                        q: soql
+                    },
+
+                    headers: {
+                        Authorization:
+                            `Bearer ${accessToken}`
+                    }
+                }
+            );
+
 
         res.json({
 
@@ -302,18 +456,22 @@ app.get("/api/records", async (req, res) => {
                 response.data.records,
 
             nextRecordsUrl:
-                response.data.nextRecordsUrl || null,
+                response.data.nextRecordsUrl ||
+                null,
 
             totalSize:
                 response.data.totalSize
+
         });
 
     } catch (error) {
 
         console.error(
             "Get records error:",
-            error.response?.data || error.message
+            error.response?.data ||
+            error.message
         );
+
 
         res.status(500).json({
 
@@ -321,7 +479,8 @@ app.get("/api/records", async (req, res) => {
                 "Failed to load Salesforce records",
 
             error:
-                error.response?.data || error.message
+                error.response?.data ||
+                error.message
         });
     }
 });
@@ -331,295 +490,417 @@ app.get("/api/records", async (req, res) => {
 // GET NEXT 20 RECORDS
 // ==========================================
 
-app.get("/api/records/next", async (req, res) => {
+app.get(
+    "/api/records/next",
+    async (req, res) => {
 
-    if (!req.session.salesforce) {
+        if (!req.session.salesforce) {
 
-        return res.status(401).json({
-            message: "Not logged in to Salesforce"
-        });
-    }
-
-    const nextUrl = req.query.url;
-
-    if (!nextUrl) {
-
-        return res.status(400).json({
-            message: "Next records URL is required"
-        });
-    }
-
-    try {
-
-        const {
-            accessToken,
-            instanceUrl
-        } = req.session.salesforce;
-
-        if (!nextUrl.startsWith(instanceUrl)) {
-
-            return res.status(400).json({
-                message: "Invalid Salesforce URL"
+            return res.status(401).json({
+                message:
+                    "Not logged in to Salesforce"
             });
         }
 
-        const response = await axios.get(
-            nextUrl,
-            {
-                headers: {
-                    Authorization:
-                        `Bearer ${accessToken}`
-                }
+
+        const nextUrl =
+            req.query.url;
+
+
+        if (!nextUrl) {
+
+            return res.status(400).json({
+                message:
+                    "Next records URL is required"
+            });
+        }
+
+
+        try {
+
+            const {
+                accessToken,
+                instanceUrl
+            } = req.session.salesforce;
+
+
+            if (!nextUrl.startsWith(instanceUrl)) {
+
+                return res.status(400).json({
+                    message:
+                        "Invalid Salesforce URL"
+                });
             }
-        );
 
-        res.json({
 
-            records:
-                response.data.records,
+            const response =
+                await axios.get(
 
-            nextRecordsUrl:
-                response.data.nextRecordsUrl || null,
+                    nextUrl,
 
-            totalSize:
-                response.data.totalSize
-        });
+                    {
 
-    } catch (error) {
+                        headers: {
+                            Authorization:
+                                `Bearer ${accessToken}`
+                        }
+                    }
+                );
 
-        console.error(
-            "Next records error:",
-            error.response?.data || error.message
-        );
 
-        res.status(500).json({
+            res.json({
 
-            message:
-                "Failed to get more Salesforce records",
+                records:
+                    response.data.records,
 
-            error:
-                error.response?.data || error.message
-        });
+                nextRecordsUrl:
+                    response.data.nextRecordsUrl ||
+                    null,
+
+                totalSize:
+                    response.data.totalSize
+
+            });
+
+        } catch (error) {
+
+            console.error(
+                "Next records error:",
+                error.response?.data ||
+                error.message
+            );
+
+
+            res.status(500).json({
+
+                message:
+                    "Failed to get more Salesforce records",
+
+                error:
+                    error.response?.data ||
+                    error.message
+            });
+        }
     }
-});
+);
 
 
 // ==========================================
 // CREATE RECORD
 // ==========================================
 
-app.post("/api/records", async (req, res) => {
+app.post(
+    "/api/records",
+    async (req, res) => {
 
-    if (!req.session.salesforce) {
+        if (!req.session.salesforce) {
 
-        return res.status(401).json({
-            message: "Not logged in to Salesforce"
-        });
+            return res.status(401).json({
+                message:
+                    "Not logged in to Salesforce"
+            });
+        }
+
+
+        const objectName =
+            req.body.object;
+
+        const fields =
+            req.body.fields;
+
+
+        if (!OBJECT_FIELDS[objectName]) {
+
+            return res.status(400).json({
+                message:
+                    "Invalid Salesforce object"
+            });
+        }
+
+
+        try {
+
+            const {
+                accessToken,
+                instanceUrl
+            } = req.session.salesforce;
+
+
+            const response =
+                await axios.post(
+
+                    `${instanceUrl}/services/data/${API_VERSION}/sobjects/${objectName}`,
+
+                    fields,
+
+                    {
+
+                        headers: {
+
+                            Authorization:
+                                `Bearer ${accessToken}`,
+
+                            "Content-Type":
+                                "application/json"
+                        }
+                    }
+                );
+
+
+            res.json(response.data);
+
+        } catch (error) {
+
+            console.error(
+                "Create error:",
+                error.response?.data ||
+                error.message
+            );
+
+
+            res.status(500).json({
+
+                message:
+                    "Failed to create Salesforce record",
+
+                error:
+                    error.response?.data ||
+                    error.message
+            });
+        }
     }
-
-    const objectName = req.body.object;
-    const fields = req.body.fields;
-
-    if (!OBJECT_FIELDS[objectName]) {
-
-        return res.status(400).json({
-            message: "Invalid Salesforce object"
-        });
-    }
-
-    try {
-
-        const {
-            accessToken,
-            instanceUrl
-        } = req.session.salesforce;
-
-        const response = await axios.post(
-
-            `${instanceUrl}/services/data/${API_VERSION}/sobjects/${objectName}`,
-
-            fields,
-
-            {
-                headers: {
-                    Authorization:
-                        `Bearer ${accessToken}`,
-
-                    "Content-Type":
-                        "application/json"
-                }
-            }
-        );
-
-        res.json(response.data);
-
-    } catch (error) {
-
-        console.error(
-            "Create error:",
-            error.response?.data || error.message
-        );
-
-        res.status(500).json({
-
-            message:
-                "Failed to create Salesforce record",
-
-            error:
-                error.response?.data || error.message
-        });
-    }
-});
+);
 
 
 // ==========================================
 // UPDATE RECORD
 // ==========================================
 
-app.patch("/api/records/:object/:id", async (req, res) => {
+app.patch(
+    "/api/records/:object/:id",
+    async (req, res) => {
 
-    if (!req.session.salesforce) {
+        if (!req.session.salesforce) {
 
-        return res.status(401).json({
-            message: "Not logged in to Salesforce"
-        });
-    }
+            return res.status(401).json({
+                message:
+                    "Not logged in to Salesforce"
+            });
+        }
 
-    const {
-        object,
-        id
-    } = req.params;
-
-    if (!OBJECT_FIELDS[object]) {
-
-        return res.status(400).json({
-            message: "Invalid Salesforce object"
-        });
-    }
-
-    try {
 
         const {
-            accessToken,
-            instanceUrl
-        } = req.session.salesforce;
+            object,
+            id
+        } = req.params;
 
-        await axios.patch(
 
-            `${instanceUrl}/services/data/${API_VERSION}/sobjects/${object}/${id}`,
+        if (!OBJECT_FIELDS[object]) {
 
-            req.body,
+            return res.status(400).json({
+                message:
+                    "Invalid Salesforce object"
+            });
+        }
 
-            {
-                headers: {
-                    Authorization:
-                        `Bearer ${accessToken}`,
 
-                    "Content-Type":
-                        "application/json"
+        try {
+
+            const {
+                accessToken,
+                instanceUrl
+            } = req.session.salesforce;
+
+
+            await axios.patch(
+
+                `${instanceUrl}/services/data/${API_VERSION}/sobjects/${object}/${id}`,
+
+                req.body,
+
+                {
+
+                    headers: {
+
+                        Authorization:
+                            `Bearer ${accessToken}`,
+
+                        "Content-Type":
+                            "application/json"
+                    }
                 }
-            }
-        );
+            );
 
-        res.json({
 
-            success: true,
+            res.json({
 
-            message:
-                "Record updated successfully"
-        });
+                success: true,
 
-    } catch (error) {
+                message:
+                    "Record updated successfully"
 
-        console.error(
-            "Update error:",
-            error.response?.data || error.message
-        );
+            });
 
-        res.status(500).json({
+        } catch (error) {
 
-            message:
-                "Failed to update Salesforce record",
+            console.error(
+                "Update error:",
+                error.response?.data ||
+                error.message
+            );
 
-            error:
-                error.response?.data || error.message
-        });
+
+            res.status(500).json({
+
+                message:
+                    "Failed to update Salesforce record",
+
+                error:
+                    error.response?.data ||
+                    error.message
+            });
+        }
     }
-});
+);
 
 
 // ==========================================
 // DELETE RECORD
 // ==========================================
 
-app.delete("/api/records/:object/:id", async (req, res) => {
+app.delete(
+    "/api/records/:object/:id",
+    async (req, res) => {
 
-    console.log("DELETE ROUTE HIT");
-
-    if (!req.session.salesforce) {
-        return res.status(401).json({
-            message: "Not logged in to Salesforce"
-        });
-    }
-
-    const {
-        object,
-        id
-    } = req.params;
-
-    console.log("DELETE REQUEST");
-    console.log("Object:", object);
-    console.log("Record ID:", id);
-
-    if (!OBJECT_FIELDS[object]) {
-        return res.status(400).json({
-            message: "Invalid Salesforce object"
-        });
-    }
-
-    try {
-
-        const {
-            accessToken,
-            instanceUrl
-        } = req.session.salesforce;
-
-        const deleteUrl =
-            `${instanceUrl}/services/data/${API_VERSION}/sobjects/${object}/${id}`;
-
-        console.log("Delete URL:", deleteUrl);
-
-        await axios.delete(
-            deleteUrl,
-            {
-                headers: {
-                    Authorization:
-                        `Bearer ${accessToken}`
-                }
-            }
+        console.log(
+            "DELETE ROUTE HIT"
         );
 
-        console.log("DELETE SUCCESS");
 
-        res.json({
-            success: true,
-            message: "Record deleted successfully"
-        });
+        if (!req.session.salesforce) {
 
-    } catch (error) {
+            return res.status(401).json({
+                message:
+                    "Not logged in to Salesforce"
+            });
+        }
 
-        console.error("========== DELETE ERROR ==========");
-        console.error("Status:", error.response?.status);
-        console.error("Salesforce Error:", error.response?.data);
-        console.error("Message:", error.message);
-        console.error("=================================");
 
-        res.status(500).json({
-            message: "Failed to delete Salesforce record",
-            error: error.response?.data || error.message
-        });
+        const {
+            object,
+            id
+        } = req.params;
+
+
+        console.log(
+            "DELETE REQUEST"
+        );
+
+        console.log(
+            "Object:",
+            object
+        );
+
+        console.log(
+            "Record ID:",
+            id
+        );
+
+
+        if (!OBJECT_FIELDS[object]) {
+
+            return res.status(400).json({
+                message:
+                    "Invalid Salesforce object"
+            });
+        }
+
+
+        try {
+
+            const {
+                accessToken,
+                instanceUrl
+            } = req.session.salesforce;
+
+
+            const deleteUrl =
+                `${instanceUrl}/services/data/${API_VERSION}/sobjects/${object}/${id}`;
+
+
+            console.log(
+                "Delete URL:",
+                deleteUrl
+            );
+
+
+            await axios.delete(
+
+                deleteUrl,
+
+                {
+
+                    headers: {
+                        Authorization:
+                            `Bearer ${accessToken}`
+                    }
+                }
+            );
+
+
+            console.log(
+                "DELETE SUCCESS"
+            );
+
+
+            res.json({
+
+                success: true,
+
+                message:
+                    "Record deleted successfully"
+
+            });
+
+        } catch (error) {
+
+            console.error(
+                "========== DELETE ERROR =========="
+            );
+
+            console.error(
+                "Status:",
+                error.response?.status
+            );
+
+            console.error(
+                "Salesforce Error:",
+                error.response?.data
+            );
+
+            console.error(
+                "Message:",
+                error.message
+            );
+
+            console.error(
+                "================================="
+            );
+
+
+            res.status(500).json({
+
+                message:
+                    "Failed to delete Salesforce record",
+
+                error:
+                    error.response?.data ||
+                    error.message
+
+            });
+        }
     }
-});
+);
 
 
 // ==========================================
@@ -629,12 +910,20 @@ app.delete("/api/records/:object/:id", async (req, res) => {
 const PORT =
     process.env.PORT || 5000;
 
-console.log("Starting server...");
 
-app.listen(PORT, "0.0.0.0", () => {
+console.log(
+    "Starting server..."
+);
 
-    console.log(
-        `Server running at http://localhost:${PORT}`
-    );
 
-});
+app.listen(
+    PORT,
+    "0.0.0.0",
+    () => {
+
+        console.log(
+            `Server running at http://localhost:${PORT}`
+        );
+
+    }
+);
