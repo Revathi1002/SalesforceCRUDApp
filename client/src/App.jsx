@@ -113,13 +113,7 @@ function App() {
 
     const login = () => {
 
-        <button onClick={() => {
-            window.location.href = `${API}/auth/login`;
-        }}>
-            Login with Salesforce
-        </button>
-
-
+        window.location.href = `${API}/auth/login`;
 
     };
 
@@ -313,7 +307,11 @@ function App() {
 
         };
 
-    }, [nextRecordsUrl, loading, loadMoreRecords]);
+    }, [
+        nextRecordsUrl,
+        loading,
+        loadMoreRecords
+    ]);
 
 
     // ==========================================
@@ -321,10 +319,15 @@ function App() {
     // ==========================================
 
     const handleView = (record) => {
+
         console.log("View clicked:", record);
+
         setSelectedRecord(record);
+
         setShowView(true);
+
     };
+
 
     // ==========================================
     // EDIT RECORD
@@ -332,7 +335,9 @@ function App() {
 
     const handleEdit = (record) => {
 
-        const editableData = { ...record };
+        const editableData = {
+            ...record
+        };
 
         delete editableData.attributes;
 
@@ -378,7 +383,9 @@ function App() {
 
         try {
 
-            const updateData = { ...formData };
+            const updateData = {
+                ...formData
+            };
 
             delete updateData.Id;
             delete updateData.attributes;
@@ -483,7 +490,9 @@ function App() {
 
         try {
 
-            const cleanData = { ...formData };
+            const cleanData = {
+                ...formData
+            };
 
             Object.keys(cleanData).forEach((key) => {
 
