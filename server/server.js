@@ -17,7 +17,7 @@ app.use(express.json());
 
 app.use(
     cors({
-        origin: "http://localhost:5173",
+       origin: "https://salesforcecrud-frontend.onrender.com",
         credentials: true
     })
 );
@@ -125,7 +125,7 @@ app.get("/auth/login", (req, res) => {
     const loginUrl =
         `${process.env.SALESFORCE_LOGIN_URL}/services/oauth2/authorize?${params.toString()}`;
 
-    res.redirect(loginUrl);
+    res.redirect("https://salesforcecrud-frontend.onrender.com");
 });
 
 
